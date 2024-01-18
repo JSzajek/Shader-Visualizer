@@ -1,0 +1,45 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Visual studio files
+*.vcxproj
+*.filters
+*.vcxproj.user
+*.vcxproj.filters
+*.sln
+
+.vs/
+.git/
+JSON/
+Binaries/*
+Intermediates/*
+Output/
+
+!NormalsRotator/vendor/opencv_4.7.0/Debug/bin/*
+!NormalsRotator/vendor/opencv_4.7.0/Debug/lib/*
+!NormalsRotator/vendor/opencv_4.7.0/Release/bin/*
+!NormalsRotator/vendor/opencv_4.7.0/Release/lib/*
+

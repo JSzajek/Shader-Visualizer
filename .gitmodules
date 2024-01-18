@@ -1,0 +1,3 @@
+[submodule "Elysium"]
+	path = Elysium
+	url = git@gitlab.com:jszajek/elysium_v2.git
