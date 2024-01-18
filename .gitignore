@@ -38,8 +38,3 @@ Binaries/*
 Intermediates/*
 Output/
 
-!NormalsRotator/vendor/opencv_4.7.0/Debug/bin/*
-!NormalsRotator/vendor/opencv_4.7.0/Debug/lib/*
-!NormalsRotator/vendor/opencv_4.7.0/Release/bin/*
-!NormalsRotator/vendor/opencv_4.7.0/Release/lib/*
-
