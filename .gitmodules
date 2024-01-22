@@ -1,3 +1,6 @@
 [submodule "Elysium"]
 	path = Elysium
 	url = git@gitlab.com:jszajek/elysium_v2.git
+[submodule "SVisualizer/vendor/opencv_lib"]
+	path = SVisualizer/vendor/opencv_lib
+	url = git@gitlab.com:jszajek/opencv-lib.git
