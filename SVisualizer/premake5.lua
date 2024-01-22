@@ -1,5 +1,6 @@
 include "Elysium/elysiumlink.lua"
 include "Elysium/vendor/imgui_suite/imgui_dependencies.lua"
+include "vendor/opencv_lib/opencv4link.lua"
 
 project "SVisualizer"
 	kind "ConsoleApp"
@@ -29,6 +30,8 @@ project "SVisualizer"
 		"%{ImGui_IncludeDir.ImGui}",
 		"%{ImGui_IncludeDir.ImGuizmo}",
 		"%{ImGui_IncludeDir.ImNodes}",
+		"%{ImGui_IncludeDir.ImTextEditor}",
+		
 		"%{IncludeDir.entt}",
 		"%{IncludeDir.IconFontCppHeaders}",
 		"%{IncludeDir.stduuid}",
@@ -43,6 +46,7 @@ project "SVisualizer"
 	}
 
 	LinkElysium()
+	LinkOpenCV4()
 
 	filter "system:windows"
 		systemversion "latest"

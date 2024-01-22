@@ -1,0 +1,1 @@
+start /d "binaries" SVisualizer.exe
