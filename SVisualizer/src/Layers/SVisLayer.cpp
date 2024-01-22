@@ -3,37 +3,17 @@
 #include "SVisLayer.h"
 
 #include "Panels/ViewerPanel.h"
+#include "Panels/ShaderEditorPanel.h"
 
 #include "Elysium/Factories/ShaderFactory.h"
 
 #include <imgui_internal.h>
 
 SVisLayer::SVisLayer()
+	: m_viewerPanel(nullptr),
+	m_editorPanel(nullptr),
+	m_modifierKeyFlag(0)
 {
-	Elysium::TextureFormat format;
-	format.Size = { 0, 0 };
-	format.sRGB = false;
-	format.FilePath = "";
-	format.Format = Elysium::PixelFormat::RGB;
-	m_activeTexture = Elysium::Texture2D::Create(format);
-
-	m_viewerPanel = Elysium::CreateUnique<ViewerPanel>(&m_outputTextureId);
-
-	m_scene = Elysium::CreateShared<Elysium::Scene>();
-
-	Elysium::FrameBufferSpecification bufferspecs;
-	bufferspecs.Attachments = { Elysium::FrameBufferTextureFormat::RGBA8 };
-	bufferspecs.Width = 200;
-	bufferspecs.Height = 200;
-	bufferspecs.SwapChainTarget = false;
-
-	m_fbo = Elysium::FrameBuffer::Create(bufferspecs);
-
-	m_outputTextureId = m_fbo->GetColorAttachementRendererID();
-
-	int samplers[Elysium::RendererCaps::MaxTextureSlots];
-	for (int i = 0; i < Elysium::RendererCaps::MaxTextureSlots; ++i)
-		samplers[i] = i;
 }
 
 SVisLayer::~SVisLayer()
@@ -42,18 +22,27 @@ SVisLayer::~SVisLayer()
 
 void SVisLayer::OnAttach()
 {
+	m_editorPanel = Elysium::CreateUnique<ShaderEditorPanel>();
+	m_viewerPanel = Elysium::CreateUnique<ViewerPanel>();
 }
 
 void SVisLayer::OnDetach()
 {
+	m_editorPanel = nullptr;
+	m_viewerPanel = nullptr;
 }
 
 void SVisLayer::OnUpdate()
 {
-	m_scene->Computations();
+	m_viewerPanel->OnUpdate();
+	m_editorPanel->OnUpdate();
 
 	// TODO:: Move into appropriate pass?
 	Elysium::CoreUniformBuffers::UploadDirtyData();
+
+	Elysium::Shared<Elysium::Shader> currentShader = nullptr;
+	m_editorPanel->GetCurrentShader(currentShader);
+	m_viewerPanel->DrawTo(currentShader);
 }
 
 void SVisLayer::OnImGuiRender()
@@ -111,6 +100,7 @@ void SVisLayer::OnImGuiRender()
 	}
 
 	m_viewerPanel->OnImGuiRender();
+	m_editorPanel->OnImGuiRender();
 
 	ImGui::End();
 
@@ -123,24 +113,11 @@ void SVisLayer::OnImGuiRender()
 void SVisLayer::OnEvent(Elysium::Event& _event)
 {
 	Elysium::EventDispatcher dispatcher(_event);
-	dispatcher.Dispatch<Elysium::WindowResizeEvent>(BIND_EVENT_FN(SVisLayer::OnWindowResize));
 	dispatcher.Dispatch<Elysium::KeyPressedEvent>(BIND_EVENT_FN(SVisLayer::OnKeyPressed));
 	dispatcher.Dispatch<Elysium::KeyReleasedEvent>(BIND_EVENT_FN(SVisLayer::OnKeyReleased));
 
-	if (m_viewerPanel->IsHovered() || m_viewerPanel->IsFocused())
+	if (m_viewerPanel->IsHovered())
 		m_viewerPanel->OnEvent(_event);
-}
-
-bool SVisLayer::OnWindowResize(Elysium::WindowResizeEvent& _event)
-{
-	Elysium::Math::iVec2 panelSize = m_viewerPanel->GetSize();
-
-	uint32_t windowWidth = panelSize.width;
-	uint32_t windowHeight = panelSize.height;
-
-	m_fbo->Resize(windowWidth, windowHeight);
-
-	return false; // Pass through
 }
 
 bool SVisLayer::OnKeyPressed(Elysium::KeyPressedEvent& _event)
@@ -159,6 +136,38 @@ bool SVisLayer::OnKeyPressed(Elysium::KeyPressedEvent& _event)
 		case Elysium::Key::RightControl:
 			BIT_SET(m_modifierKeyFlag, ModifierKeys::RightCtrl);
 			break;
+		case Elysium::Key::O:
+		{
+			if (BIT_CHECK(m_modifierKeyFlag, ModifierKeys::LeftCtrl) || BIT_CHECK(m_modifierKeyFlag, ModifierKeys::RightCtrl))
+			{
+				m_editorPanel->OpenFile();
+				return true;
+			}
+			break;
+		}
+		case Elysium::Key::N:
+		{
+			if (BIT_CHECK(m_modifierKeyFlag, ModifierKeys::LeftCtrl) || BIT_CHECK(m_modifierKeyFlag, ModifierKeys::RightCtrl))
+			{
+				m_editorPanel->NewFile();
+				return true;
+			}
+			break;
+		}
+		case Elysium::Key::S:
+		{
+			if (BIT_CHECK(m_modifierKeyFlag, ModifierKeys::LeftCtrl) || BIT_CHECK(m_modifierKeyFlag, ModifierKeys::RightCtrl))
+			{
+				m_editorPanel->SaveFile();
+				return true;
+			}
+			break;
+		}
+		case Elysium::Key::F5:
+		{
+			m_editorPanel->Compile();
+			return true;
+		}
 	}
 	return false;
 }
