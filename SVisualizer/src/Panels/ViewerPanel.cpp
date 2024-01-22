@@ -328,6 +328,7 @@ void ViewerPanel::OnImGuiRender()
 		ImGui::SameLine();
 		ImGui::PushItemWidth(50.f);
 		ImGui::InputScalar("##desired_width", ImGuiDataType_U32, &m_desiredSize.x);
+		m_desiredSize.x = std::min(std::max(m_desiredSize.x, 1), 4096);
 		ImGui::PopItemWidth();
 		ImGui::SameLine();
 
@@ -335,6 +336,7 @@ void ViewerPanel::OnImGuiRender()
 		ImGui::SameLine();
 		ImGui::PushItemWidth(50.f);
 		ImGui::InputScalar("##desired_height", ImGuiDataType_U32, &m_desiredSize.y);
+		m_desiredSize.y = std::min(std::max(m_desiredSize.y, 1), 4096);
 		ImGui::PopItemWidth();
 
 		ImGui::Text("Bloom:");
