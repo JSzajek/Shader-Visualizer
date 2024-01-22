@@ -42,6 +42,7 @@ group "Dependencies"
 	include "Elysium/vendor/imgui_suite/imgui"
 	include "Elysium/vendor/imgui_suite/imguizmo"
 	include "Elysium/vendor/imgui_suite/imnodes"
+	include "Elysium/vendor/imgui_suite/imtexteditor"
 group ""
 
 group "Engine"
