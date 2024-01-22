@@ -4,6 +4,7 @@
 
 #include "Elysium/Utils/FileUtils.h"
 #include "Elysium/Factories/ShaderFactory.h"
+#include "Elysium/Renderer/RendererBase.h"
 
 #include <TextEditor.h>
 #include <imgui_internal.h>
@@ -17,7 +18,8 @@ ShaderEditorPanel::ShaderEditorPanel()
 	m_textChanged(false),
 	m_textFileChanged(false),
 	m_currentFile("null"), 
-	m_currentFileName()
+	m_currentFileName(),
+	m_imageEditorVisible(false)
 {
 	// Initialize the text editor
 	m_textEditor = Elysium::CreateUnique<TextEditor>();
@@ -89,9 +91,9 @@ void ShaderEditorPanel::OnImGuiRender()
 	const float panelWidth = ImGui::GetWindowWidth();
 
 	ImGui::Columns(3, "Controls", false);
-	ImGui::SetColumnWidth(0, 250.f);
-	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 250.f - 175.f));
-	if (ImGui::Button(ICON_FA_PLAY_CIRCLE, ImVec2(50, 25)))
+	ImGui::SetColumnWidth(0, 275.f);
+	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 275.f - 200.f));
+	if (ImGui::Button(ICON_FA_PLAY_CIRCLE, ImVec2(40, 25)))
 	{
 		Compile();
 	}
@@ -145,18 +147,24 @@ void ShaderEditorPanel::OnImGuiRender()
 	ImGui::NextColumn();
 
 	ImGui::NextColumn();
-	if (ImGui::Button(ICON_FA_FILE, ImVec2(50, 25)))
+
+	if (ImGui::Button(ICON_FA_IMAGE, ImVec2(40, 25)))
+	{
+		m_imageEditorVisible = !m_imageEditorVisible;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(ICON_FA_FILE, ImVec2(40, 25)))
 	{
 		NewFile();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(ICON_FA_SAVE, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_SAVE, ImVec2(40, 25)))
 	{
 		SaveFile();
 	}
 	ImGui::SameLine();
 	
-	if (ImGui::Button(ICON_FA_FOLDER_OPEN, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_FOLDER_OPEN, ImVec2(40, 25)))
 	{
 		OpenFile();
 	}
@@ -183,11 +191,88 @@ void ShaderEditorPanel::OnImGuiRender()
 	m_textEditor->Render("TextEditor");
 
 	ImGui::End();
+
+	if (m_imageEditorVisible)
+	{
+		ImGui::SetNextWindowClass(&window_class);
+		if (!ImGui::Begin("Images", &m_imageEditorVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | 
+														   ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoResize))
+			ImGui::End();
+
+		const float imagesPanelWidth = ImGui::GetWindowWidth();
+
+		// Images Group -----------------------------
+		ImGui::PushID("##ImagesGroup");
+		ImGui::BeginGroup();
+
+		const ImGuiWindowFlags child_flags = ImGuiWindowFlags_MenuBar;
+		const ImGuiID child_id = ImGui::GetID((void*)(intptr_t)0);
+		const bool child_is_visible = ImGui::BeginChild(child_id, ImVec2(imagesPanelWidth, 260.0f), true, child_flags);
+		if (ImGui::BeginMenuBar())
+		{
+			ImGui::TextUnformatted("Slots");
+			ImGui::EndMenuBar();
+		}
+		ImGui::Spacing();
+
+		ImGui::Columns(3, "SlotsColumns", false);
+		ImGui::SetColumnWidth(0, 400.f);
+		ImGui::SetColumnWidth(1, imagesPanelWidth - 400.f - 115.f);
+
+		ImVec4 unselectedColor(0.6f, 0.8f, 0.8f, 1.0f);
+		for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+		{
+			Elysium::Shared<Elysium::Texture2D> tex = m_loadedImages.m_textures[i];
+			ImGui::Text("%i.", i);
+			ImGui::SameLine();
+
+			if (tex != nullptr)
+			{
+				ImGui::Text(m_loadedImages.m_filenames[i].c_str());
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip(tex->GetName().c_str());
+			}
+			else
+			{
+				ImGui::TextColored(unselectedColor, "[empty]");
+			}
+
+			ImGui::NextColumn();
+			ImGui::NextColumn();
+			if (ImGui::Button(ICON_FA_PLUS, ImVec2(40, 25)))
+				m_loadedImages.TryAddToSlot(i);
+			ImGui::SameLine();
+			if (ImGui::Button(ICON_FA_TRASH, ImVec2(40, 25)))
+				m_loadedImages.RemoveSlot(i);
+
+			ImGui::NextColumn();
+		}	
+
+		ImGui::EndChild();
+		ImGui::EndGroup();
+		ImGui::PopID();
+		// ---------------------------------------------------
+
+		ImGui::End();
+	}
+
 	ImGui::PopStyleVar();
 }
 
 void ShaderEditorPanel::GetCurrentShader(Elysium::Shared<Elysium::Shader>& output)
 {
+	// Bind the loaded images to the correct slots
+	m_currentShader->Bind();
+	for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+	{
+		Elysium::Shared<Elysium::Texture2D> tex = m_loadedImages.m_textures[i];
+		if (tex != nullptr)
+			tex->Bind(i);
+		else
+			Elysium::GlobalRendererBase::GetDefaultTexture()->Bind(i);
+	}
+	m_currentShader->Unbind();
+
 	output = m_currentShader;
 }
 
@@ -340,5 +425,39 @@ void ShaderEditorPanel::CompileShader()
 	{
 		m_currentShader = newShader;
 		m_shaderCompiled = true;
+
+		// Rebind texture slots
+		int samplers[LoadedImages::MaxNumImages];
+		for (int i = 0; i < LoadedImages::MaxNumImages; ++i)
+			samplers[i] = i;
+
+		m_currentShader->Bind();
+		m_currentShader->SetIntArray("textureMaps", samplers, LoadedImages::MaxNumImages);
+		m_currentShader->Unbind();
+	}
+}
+
+void ShaderEditorPanel::LoadedImages::TryAddToSlot(uint8_t slot)
+{
+	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("");
+	if (Elysium::FileUtils::FileExists(textureFilepath))
+	{
+		m_filenames[slot] = Elysium::FileUtils::GetFileName(textureFilepath, true);
+		m_textures[slot] = Elysium::Texture2D::Create(textureFilepath);
+	}
+}
+
+void ShaderEditorPanel::LoadedImages::RemoveSlot(uint8_t slot)
+{
+	m_textures[slot] = nullptr;
+	m_filenames[slot] = "";
+}
+
+ShaderEditorPanel::LoadedImages::LoadedImages()
+{
+	for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+	{
+		m_textures[i] = nullptr;
+		m_filenames[i] = "";
 	}
 }

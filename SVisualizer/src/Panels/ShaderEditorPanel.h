@@ -27,6 +27,8 @@ private:
 	void ResetShader();
 	void LoadCodeFromFile(const std::string& filepath = "");
 	void CompileShader();
+
+	void AddTextureSlot();
 public:
 	std::string m_baseShaderCode;
 	std::string m_defaultPixelShaderCode;
@@ -44,4 +46,21 @@ public:
 	std::string m_currentFileName;
 
 	Elysium::Unique<TextEditor> m_textEditor;
+
+	bool m_imageEditorVisible;
+
+	struct LoadedImages
+	{
+	public:
+		static constexpr uint8_t MaxNumImages = 8;
+	public:
+		LoadedImages();
+	public:
+		void TryAddToSlot(uint8_t slot);
+		void RemoveSlot(uint8_t slot);
+	public:
+		std::array<Elysium::Shared<Elysium::Texture2D>, 8> m_textures;
+		std::array<std::string, 8> m_filenames;
+	};
+	LoadedImages m_loadedImages;
 };

@@ -78,6 +78,7 @@ ViewerPanel::ViewerPanel()
 	ELYSIUM_CORE_ASSERT(m_spriteShader->IsCompiled(), "Sprite Shader Failed to Compile.");
 	ELYSIUM_CORE_ASSERT(m_blurShader->IsCompiled(), "Blur Shader Failed to Compile.");
 	ELYSIUM_CORE_ASSERT(m_bloomShader->IsCompiled(), "Bloom Shader Failed to Compile.");
+	ELYSIUM_CORE_ASSERT(m_debugShader->IsCompiled(), "Debug Shader Failed to Compile.");
 
 	UpdateCameraView();
 	UpdateCameraProjection();
@@ -131,15 +132,8 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 	{
 		if (m_useBloom)
 		{
-			m_hdrfbo->Bind();
-
-			shader->Bind();
-
 			Elysium::GraphicsCalls::ClearBuffers();
 			Elysium::RenderCommands::DrawScreenShader(m_hdrfbo, shader);
-
-			shader->Unbind();
-			m_hdrfbo->Unbind();
 
 			// Blur Pass - blur the bright color values
 			bool horizontal = true;
@@ -186,15 +180,8 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 		}
 		else
 		{
-			m_shaderfbo->Bind();
-
-			shader->Bind();
-
 			Elysium::GraphicsCalls::ClearBuffers();
 			Elysium::RenderCommands::DrawScreenShader(m_shaderfbo, shader);
-
-			shader->Unbind();
-			m_shaderfbo->Unbind();
 		}
 	}
 
@@ -231,8 +218,8 @@ void ViewerPanel::OnImGuiRender()
 
 	ImGui::Columns(3, "Viewer Details", false);
 
-	ImGui::SetColumnWidth(0, 400);
-	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 400.f - 125.f));
+	ImGui::SetColumnWidth(0, 105.f);
+	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 105.f - 105.f));
 
 	// Snapshot
 	if (ImGui::Button(ICON_FA_CAMERA, ImVec2(40, 25)))
@@ -242,7 +229,7 @@ void ViewerPanel::OnImGuiRender()
 	ImGui::SameLine();
 
 	// Re-focus
-	if (ImGui::Button(ICON_FA_COMPRESS_ARROWS_ALT, ImVec2(35, 25)))
+	if (ImGui::Button(ICON_FA_COMPRESS_ARROWS_ALT, ImVec2(40, 25)))
 	{
 		FocusCamera();
 		UpdateCameraProjection();
@@ -252,12 +239,12 @@ void ViewerPanel::OnImGuiRender()
 
 	ImGui::NextColumn();
 
-	if (ImGui::Button(m_playing ? ICON_FA_PAUSE : ICON_FA_PLAY, ImVec2(50, 25)))
+	if (ImGui::Button(m_playing ? ICON_FA_PAUSE : ICON_FA_PLAY, ImVec2(40, 25)))
 	{
 		m_playing = !m_playing;
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(ICON_FA_COG, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_COG, ImVec2(40, 25)))
 	{
 		m_settingsVisible = !m_settingsVisible;
 	}
