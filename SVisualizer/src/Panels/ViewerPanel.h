@@ -53,6 +53,22 @@ private:
 
 	float m_currentTime;
 	bool m_useBloom;
+	float m_gamma;
+	float m_exposure;
 
 	bool m_playing;
+	bool m_settingsVisible;
+
+	// Debug
+	enum class DrawPass : uint8_t
+	{
+		None,
+		BrightPass,
+		BlurPass,
+
+		Count
+	};
+	const char* m_drawPassStrs[3] = { "None", "Bright Pixels", "Blurring" };
+	DrawPass m_debugPass;
+	Elysium::Shared<Elysium::Shader> m_debugShader;
 };

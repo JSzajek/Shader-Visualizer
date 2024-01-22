@@ -20,7 +20,11 @@ ViewerPanel::ViewerPanel()
 	m_hovered(false),
 	m_currentTime(0),
 	m_useBloom(false),
-	m_playing(true)
+	m_gamma(1.1f),
+	m_exposure(1.0f),
+	m_playing(true),
+	m_settingsVisible(false),
+	m_debugPass(DrawPass::None)
 {
 	Elysium::FrameBufferSpecification bufferspecs;
 	bufferspecs.Attachments = { Elysium::FrameBufferTextureFormat::RGBA8 };
@@ -61,6 +65,7 @@ ViewerPanel::ViewerPanel()
 	m_spriteShader = Elysium::ShaderFactory::Create("Content/Engine/shaders/default_sprite.shader");
 	m_blurShader = Elysium::ShaderFactory::Create("Content/shaders/blur.shader");
 	m_bloomShader = Elysium::ShaderFactory::Create("Content/shaders/bloom.shader");
+	m_debugShader = Elysium::ShaderFactory::Create("Content/shaders/debug.shader");
 
 	int samplers[Elysium::RendererCaps::MaxTextureSlots];
 	for (int i = 0; i < Elysium::RendererCaps::MaxTextureSlots; ++i)
@@ -137,7 +142,7 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 			m_hdrfbo->Unbind();
 
 			// Blur Pass - blur the bright color values
-			bool horizontal = true, first_iteration = true;
+			bool horizontal = true;
 			uint8_t amount = 10;
 			for (uint8_t i = 0; i < amount; ++i)
 			{
@@ -146,17 +151,38 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 
 				Elysium::GraphicsCalls::ClearBuffers();
 				Elysium::RenderCommands::DrawTexture(m_bloomFbos[(int)horizontal], Elysium::RenderCommands::TextureDrawType::Color,
-													 first_iteration ? m_hdrfbo->GetColorAttachment(1) : m_bloomFbos[(int)!horizontal]->GetColorAttachment(), 
+													 i == 0 ? m_hdrfbo->GetColorAttachment(1) : m_bloomFbos[(int)!horizontal]->GetColorAttachment(), 
 													 m_blurShader);
 				horizontal = !horizontal;
-				if (first_iteration)
-					first_iteration = false;
 			}
 
-			// Combination Pass - tonemap hdr color and blend to shader output.
-			Elysium::GraphicsCalls::ClearBuffers();
-			Elysium::RenderCommands::DrawTextures(m_shaderfbo, m_bloomShader,
-												  { m_hdrfbo->GetColorAttachment(), m_bloomFbos[(int)!horizontal]->GetColorAttachment()});
+			if (m_debugPass == DrawPass::None)
+			{
+				// Combination Pass - tonemap hdr color and blend to shader output.
+				m_bloomShader->Bind();
+				m_bloomShader->SetFloat("inputGamma", m_gamma);
+				m_bloomShader->SetFloat("inputExposure", m_exposure);
+
+				Elysium::GraphicsCalls::ClearBuffers();
+				Elysium::RenderCommands::DrawTextures(m_shaderfbo, m_bloomShader,
+													  { m_hdrfbo->GetColorAttachment(), m_bloomFbos[(int)!horizontal]->GetColorAttachment()});
+			}
+			else
+			{
+				Elysium::Shared<Elysium::Texture2D> debugTexToDraw = nullptr;
+				if (m_debugPass == DrawPass::BrightPass)
+					debugTexToDraw = m_hdrfbo->GetColorAttachment(1);
+				else if (m_debugPass == DrawPass::BlurPass)
+					debugTexToDraw = m_bloomFbos[(int)!horizontal]->GetColorAttachment();
+
+				m_debugShader->Bind();
+				m_debugShader->SetFloat("inputGamma", m_gamma);
+				m_debugShader->SetFloat("inputExposure", m_exposure);
+
+				Elysium::GraphicsCalls::ClearBuffers();
+				Elysium::RenderCommands::DrawTexture(m_shaderfbo, Elysium::RenderCommands::TextureDrawType::Color, 
+												     debugTexToDraw, m_debugShader);
+			}
 		}
 		else
 		{
@@ -206,10 +232,10 @@ void ViewerPanel::OnImGuiRender()
 	ImGui::Columns(3, "Viewer Details", false);
 
 	ImGui::SetColumnWidth(0, 400);
-	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 400.f - 75.f));
+	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 400.f - 125.f));
 
 	// Snapshot
-	if (ImGui::Button(ICON_FA_CAMERA, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_CAMERA, ImVec2(40, 25)))
 	{
 		SnapShot();
 	}
@@ -221,26 +247,6 @@ void ViewerPanel::OnImGuiRender()
 		FocusCamera();
 		UpdateCameraProjection();
 	}
-	ImGui::SameLine();
-
-	ImGui::Text("W:");
-	ImGui::SameLine();
-	ImGui::PushItemWidth(50.f);
-	ImGui::InputScalar("##desired_width", ImGuiDataType_U32, &m_desiredSize.x);
-	ImGui::PopItemWidth();
-	ImGui::SameLine();
-	ImGui::Text("H:");
-	ImGui::SameLine();
-	ImGui::PushItemWidth(50.f);
-	ImGui::InputScalar("##desired_height", ImGuiDataType_U32, &m_desiredSize.y);
-	ImGui::PopItemWidth();
-	
-	ImGui::SameLine();
-	ImGui::Spacing();
-	ImGui::SameLine();
-	ImGui::Text("Bloom:");
-	ImGui::SameLine();
-	ImGui::Checkbox("##bloom", &m_useBloom);
 
 	ImGui::NextColumn();
 
@@ -249,6 +255,11 @@ void ViewerPanel::OnImGuiRender()
 	if (ImGui::Button(m_playing ? ICON_FA_PAUSE : ICON_FA_PLAY, ImVec2(50, 25)))
 	{
 		m_playing = !m_playing;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(ICON_FA_COG, ImVec2(50, 25)))
+	{
+		m_settingsVisible = !m_settingsVisible;
 	}
 
 	//ImGui::SameLine();
@@ -278,6 +289,115 @@ void ViewerPanel::OnImGuiRender()
 	m_hovered = ImGui::IsWindowHovered();
 
 	ImGui::End();
+
+	if (m_settingsVisible)
+	{
+		ImGui::SetNextWindowClass(&window_class);
+		if (!ImGui::Begin("Settings", &m_settingsVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoDocking))
+			ImGui::End();
+
+		const float settingsPanelWidth = ImGui::GetWindowWidth();
+
+		// Render Settings Group -----------------------------
+		ImGui::PushID("##RenderSettingsGroup");
+		ImGui::BeginGroup();
+
+		const ImGuiWindowFlags child_flags = ImGuiWindowFlags_MenuBar;
+		const ImGuiID child_id = ImGui::GetID((void*)(intptr_t)0);
+		const bool child_is_visible = ImGui::BeginChild(child_id, ImVec2(settingsPanelWidth, 200.0f), true, child_flags);
+		if (ImGui::BeginMenuBar())
+		{
+			ImGui::Text("Render Settings");
+
+			ImGui::EndMenuBar();
+		}
+		ImGui::Spacing();
+
+		ImVec4 titleColor(0.5f, 0.5f, 0.5f, 1.0f);
+
+		ImGui::Spacing();
+		ImGui::SameLine();
+		ImGui::TextColored(titleColor, "Visual");
+		ImGui::Separator();
+
+		ImGui::Columns(2, "VisualSettingsColumns", false);
+		ImGui::SetColumnWidth(0, 5);
+		ImGui::NextColumn();
+
+		ImGui::Text("Width:");
+		ImGui::SameLine();
+		ImGui::PushItemWidth(50.f);
+		ImGui::InputScalar("##desired_width", ImGuiDataType_U32, &m_desiredSize.x);
+		ImGui::PopItemWidth();
+		ImGui::SameLine();
+
+		ImGui::Text("Height:");
+		ImGui::SameLine();
+		ImGui::PushItemWidth(50.f);
+		ImGui::InputScalar("##desired_height", ImGuiDataType_U32, &m_desiredSize.y);
+		ImGui::PopItemWidth();
+
+		ImGui::Text("Bloom:");
+		ImGui::SameLine();
+		ImGui::Checkbox("##bloom", &m_useBloom);
+
+		if (m_useBloom)
+		{
+			ImGui::Text("Gamma:");
+			ImGui::SameLine();
+			ImGui::PushItemWidth(75.f);
+			ImGui::DragFloat("##gammavalue", &m_gamma, 0.1f);
+			ImGui::PopItemWidth();
+			ImGui::SameLine();
+			ImGui::Spacing();
+			ImGui::SameLine();
+			ImGui::Text("Exposure:");
+			ImGui::SameLine();
+			ImGui::PushItemWidth(75.f);
+			ImGui::DragFloat("##exposurevalue", &m_exposure, 0.1f);
+			ImGui::PopItemWidth();
+		}
+
+		ImGui::Spacing();
+
+		ImGui::Columns(1);
+
+		ImGui::Spacing();
+		ImGui::SameLine();
+		ImGui::TextColored(titleColor, "Debug");
+		ImGui::Separator();
+
+		ImGui::Columns(2, "DebugVSettingsColumns", false);
+		ImGui::SetColumnWidth(0, 5);
+		ImGui::NextColumn();
+
+		ImGui::Spacing();
+		ImGui::Text("Debug Pass:");
+		ImGui::SameLine();
+
+		ImGui::TextDisabled("(?)");
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+			ImGui::TextUnformatted("Only Applies when Bloom is Enabled.");
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+
+		ImGui::SameLine();
+		ImGui::PushItemWidth(125.f);
+		ImGui::Combo("##debugpass", (int*)&m_debugPass, m_drawPassStrs, (int)DrawPass::Count);
+		ImGui::PopItemWidth();
+
+		ImGui::EndChild();
+		ImGui::EndGroup();
+		ImGui::PopID();
+		// ---------------------------------------------------
+
+		ImGui::End();
+	}
+
 	ImGui::PopStyleVar();
 }
 
