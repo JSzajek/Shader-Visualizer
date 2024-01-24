@@ -181,10 +181,17 @@ void ShaderEditorPanel::OnImGuiRender()
 	{
 		ImGui::BulletText("Math_PI [float]: mathematical pi constant.");
 		ImGui::BulletText("Math_TAU [float]: mathematical tau (2*pi) constant.");
+
 		ImGui::BulletText("UVS [vec2]: uv texture coordinates.");
 		ImGui::BulletText("PIXCOORD [vec2]: pixel coordinates.");
+
 		ImGui::BulletText("RESOLUTION [vec2]: output resolution.");
+		ImGui::BulletText("GAMMA [float]: the bloom pass gamma value.");
+		ImGui::BulletText("EXPOSURE [float]: the bloom pass exposure value.");
+
 		ImGui::BulletText("TIME [float]: shader time value.");
+
+		ImGui::BulletText("TEX# [texture]: slot sample texture ranging from 0-7 (e.g: TEX0...TEX7).");
 	}
 
 	ImGui::Separator();

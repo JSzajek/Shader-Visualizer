@@ -30,6 +30,10 @@ layout (binding = 0) uniform sampler2D textureMaps[8];
 #define PIXCOORD PixCoord
 
 #define RESOLUTION (u_Viewport.xy)
+
+#define GAMMA u_GammaAdjustment.x
+#define EXPOSURE u_Exposure
+
 #define TIME u_Time
 
 #define TEX0 textureMaps[0]
