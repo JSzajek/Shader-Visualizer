@@ -3,11 +3,12 @@
 #include "Elysium.h"
 
 class TextEditor;
+struct ShaderPackage;
 
 class ShaderEditorPanel
 {
 public:
-	ShaderEditorPanel();
+	ShaderEditorPanel(ShaderPackage* package);
 	~ShaderEditorPanel();
 public:
 	void OnUpdate();
@@ -25,14 +26,14 @@ private:
 	void SaveCurrentCode();
 	
 	void ResetShader();
-	void LoadCodeFromFile(const std::string& filepath = "");
 	void CompileShader();
-public:
+private:
+	ShaderPackage* m_package;
+
 	std::string m_baseShaderCode;
 	std::string m_defaultPixelShaderCode;
 
-	Elysium::Shared<Elysium::Shader> m_currentShader;
-	std::string m_currentShaderCode;
+
 	std::string m_savedShaderCode;
 	bool m_shaderCompileRequested;
 	bool m_shaderCompiled;
@@ -44,4 +45,22 @@ public:
 	std::string m_currentFileName;
 
 	Elysium::Unique<TextEditor> m_textEditor;
+
+	bool m_imageEditorVisible;
+
+	struct LoadedImages
+	{
+	public:
+		static constexpr uint8_t MaxNumImages = 8;
+	public:
+		LoadedImages();
+	public:
+		void ForceAddToSlot(uint8_t slot, const std::string& filepath);
+		bool TryAddToSlot(uint8_t slot);
+		void RemoveSlot(uint8_t slot);
+	public:
+		std::array<Elysium::Shared<Elysium::Texture2D>, 8> m_textures;
+		std::array<std::string, 8> m_filenames;
+	};
+	LoadedImages m_loadedImages;
 };

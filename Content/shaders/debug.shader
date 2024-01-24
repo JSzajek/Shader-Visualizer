@@ -22,18 +22,15 @@ layout(location = 0) out vec4 Color;
 
 layout(binding = 0) uniform sampler2D sampleTexture;
 
-uniform float inputGamma;
-uniform float inputExposure;
-
 void main()
 {
 	vec3 sampleColor = texture(sampleTexture, TexCoords).rgb;
 
 	// tone mapping
-	vec3 result = vec3(1.0) - exp(-sampleColor * inputExposure);
+	vec3 result = vec3(1.0) - exp(-sampleColor * u_Exposure);
 	
 	// also gamma correct while we're at it       
-	result = pow(result, vec3(1.0 / inputGamma));
+	result = pow(result, vec3(1.0 / u_GammaAdjustment.x));
 	
 	Color = vec4(result, 1.0);
 }

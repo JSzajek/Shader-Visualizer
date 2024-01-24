@@ -24,11 +24,25 @@ layout(location = 1) in vec2 PixCoord;
 layout(location = 0) out vec4 Color;
 layout(location = 1) out vec4 BloomColor;
 
+layout (binding = 0) uniform sampler2D textureMaps[8];
+
 #define UVS TexCoords
 #define PIXCOORD PixCoord
 
 #define RESOLUTION (u_Viewport.xy)
+
+#define GAMMA u_GammaAdjustment.x
+#define EXPOSURE u_Exposure
+
 #define TIME u_Time
+
+#define TEX0 textureMaps[0]
+#define TEX1 textureMaps[1]
+#define TEX2 textureMaps[2]
+#define TEX3 textureMaps[3]
+#define TEX4 textureMaps[4]
+#define TEX5 textureMaps[5]
+#define TEX6 textureMaps[6]
 
 void PixelProcess(out vec4 color);
 

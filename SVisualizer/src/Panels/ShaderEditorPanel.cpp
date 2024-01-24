@@ -4,20 +4,24 @@
 
 #include "Elysium/Utils/FileUtils.h"
 #include "Elysium/Factories/ShaderFactory.h"
+#include "Elysium/Renderer/RendererBase.h"
+
+#include "ShaderPackage.h"
+#include "ShaderPackageSerializer.h"
 
 #include <TextEditor.h>
 #include <imgui_internal.h>
 
-ShaderEditorPanel::ShaderEditorPanel()
-	: m_currentShader(nullptr),
-	m_currentShaderCode(),
+ShaderEditorPanel::ShaderEditorPanel(ShaderPackage* package)
+	: m_package(package),
 	m_savedShaderCode(),
 	m_shaderCompileRequested(false),
 	m_shaderCompiled(false),
 	m_textChanged(false),
 	m_textFileChanged(false),
-	m_currentFile("null"), 
-	m_currentFileName()
+	m_currentFile(), 
+	m_currentFileName(),
+	m_imageEditorVisible(false)
 {
 	// Initialize the text editor
 	m_textEditor = Elysium::CreateUnique<TextEditor>();
@@ -53,7 +57,7 @@ ShaderEditorPanel::~ShaderEditorPanel()
 void ShaderEditorPanel::OnUpdate()
 {
 	std::string currentText = m_textEditor->GetText();
-	if (currentText != m_currentShaderCode)
+	if (currentText != m_package->Code)
 		m_textChanged = true;
 
 	if (currentText != m_savedShaderCode)
@@ -89,9 +93,9 @@ void ShaderEditorPanel::OnImGuiRender()
 	const float panelWidth = ImGui::GetWindowWidth();
 
 	ImGui::Columns(3, "Controls", false);
-	ImGui::SetColumnWidth(0, 250.f);
-	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 250.f - 175.f));
-	if (ImGui::Button(ICON_FA_PLAY_CIRCLE, ImVec2(50, 25)))
+	ImGui::SetColumnWidth(0, 275.f);
+	ImGui::SetColumnWidth(1, std::max(10.0f, panelWidth - 275.f - 200.f));
+	if (ImGui::Button(ICON_FA_PLAY_CIRCLE, ImVec2(40, 25)))
 	{
 		Compile();
 	}
@@ -145,18 +149,24 @@ void ShaderEditorPanel::OnImGuiRender()
 	ImGui::NextColumn();
 
 	ImGui::NextColumn();
-	if (ImGui::Button(ICON_FA_FILE, ImVec2(50, 25)))
+
+	if (ImGui::Button(ICON_FA_IMAGE, ImVec2(40, 25)))
+	{
+		m_imageEditorVisible = !m_imageEditorVisible;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(ICON_FA_FILE, ImVec2(40, 25)))
 	{
 		NewFile();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(ICON_FA_SAVE, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_SAVE, ImVec2(40, 25)))
 	{
 		SaveFile();
 	}
 	ImGui::SameLine();
 	
-	if (ImGui::Button(ICON_FA_FOLDER_OPEN, ImVec2(50, 25)))
+	if (ImGui::Button(ICON_FA_FOLDER_OPEN, ImVec2(40, 25)))
 	{
 		OpenFile();
 	}
@@ -171,10 +181,17 @@ void ShaderEditorPanel::OnImGuiRender()
 	{
 		ImGui::BulletText("Math_PI [float]: mathematical pi constant.");
 		ImGui::BulletText("Math_TAU [float]: mathematical tau (2*pi) constant.");
+
 		ImGui::BulletText("UVS [vec2]: uv texture coordinates.");
 		ImGui::BulletText("PIXCOORD [vec2]: pixel coordinates.");
+
 		ImGui::BulletText("RESOLUTION [vec2]: output resolution.");
+		ImGui::BulletText("GAMMA [float]: the bloom pass gamma value.");
+		ImGui::BulletText("EXPOSURE [float]: the bloom pass exposure value.");
+
 		ImGui::BulletText("TIME [float]: shader time value.");
+
+		ImGui::BulletText("TEX# [texture]: slot sample texture ranging from 0-7 (e.g: TEX0...TEX7).");
 	}
 
 	ImGui::Separator();
@@ -183,12 +200,95 @@ void ShaderEditorPanel::OnImGuiRender()
 	m_textEditor->Render("TextEditor");
 
 	ImGui::End();
+
+	if (m_imageEditorVisible)
+	{
+		ImGui::SetNextWindowClass(&window_class);
+		if (!ImGui::Begin("Images", &m_imageEditorVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | 
+														   ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoResize))
+			ImGui::End();
+
+		const float imagesPanelWidth = ImGui::GetWindowWidth();
+
+		// Images Group -----------------------------
+		ImGui::PushID("##ImagesGroup");
+		ImGui::BeginGroup();
+
+		const ImGuiWindowFlags child_flags = ImGuiWindowFlags_MenuBar;
+		const ImGuiID child_id = ImGui::GetID((void*)(intptr_t)0);
+		const bool child_is_visible = ImGui::BeginChild(child_id, ImVec2(imagesPanelWidth, 260.0f), true, child_flags);
+		if (ImGui::BeginMenuBar())
+		{
+			ImGui::TextUnformatted("Slots");
+			ImGui::EndMenuBar();
+		}
+		ImGui::Spacing();
+
+		ImGui::Columns(3, "SlotsColumns", false);
+		ImGui::SetColumnWidth(0, 400.f);
+		ImGui::SetColumnWidth(1, imagesPanelWidth - 400.f - 115.f);
+
+		ImVec4 unselectedColor(0.6f, 0.8f, 0.8f, 1.0f);
+		for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+		{
+			Elysium::Shared<Elysium::Texture2D> tex = m_loadedImages.m_textures[i];
+			ImGui::Text("%i.", i);
+			ImGui::SameLine();
+
+			if (tex != nullptr)
+			{
+				ImGui::Text(m_loadedImages.m_filenames[i].c_str());
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip(tex->GetName().c_str());
+			}
+			else
+			{
+				ImGui::TextColored(unselectedColor, "[empty]");
+			}
+
+			ImGui::NextColumn();
+			ImGui::NextColumn();
+			if (ImGui::Button(ICON_FA_PLUS, ImVec2(40, 25)))
+			{
+				if (m_loadedImages.TryAddToSlot(i))
+					m_package->Textures[i] = m_loadedImages.m_textures[i]->GetName();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button(ICON_FA_TRASH, ImVec2(40, 25)))
+			{
+				m_loadedImages.RemoveSlot(i);
+				m_package->Textures[i] = "";
+			}
+
+			ImGui::NextColumn();
+		}	
+
+		ImGui::EndChild();
+		ImGui::EndGroup();
+		ImGui::PopID();
+		// ---------------------------------------------------
+
+		ImGui::End();
+	}
+
 	ImGui::PopStyleVar();
 }
 
 void ShaderEditorPanel::GetCurrentShader(Elysium::Shared<Elysium::Shader>& output)
 {
-	output = m_currentShader;
+	// Bind the loaded images to the correct slots
+	m_package->Shader->Bind();
+	for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+	{
+		Elysium::Shared<Elysium::Texture2D> tex = m_loadedImages.m_textures[i];
+		if (tex != nullptr)
+			tex->Bind(i);
+		else
+			Elysium::GlobalRendererBase::GetDefaultTexture()->Bind(i);
+	}
+	m_package->Shader->Unbind();
+
+	output = m_package->Shader;
 }
 
 void ShaderEditorPanel::NewFile()
@@ -205,7 +305,8 @@ void ShaderEditorPanel::NewFile()
 	m_currentFile = "";
 	m_currentFileName = "Untitled";
 
-	m_currentShaderCode = m_defaultPixelShaderCode;
+	m_package->Reset();
+
 	m_textFileChanged = true;
 
 	ResetShader();
@@ -227,7 +328,7 @@ void ShaderEditorPanel::SaveFile()
 
 void ShaderEditorPanel::Compile()
 {
-	m_currentShaderCode = m_textEditor->GetText();
+	m_package->Code = m_textEditor->GetText();
 	m_shaderCompileRequested = true;
 }
 
@@ -235,13 +336,25 @@ void ShaderEditorPanel::LoadFromFile()
 {
 	const std::string filepath = Elysium::FileDialogs::OpenFile("Pixel Shader (*.pshader)\0*.pshader\0");
 
-	if (Elysium::FileUtils::FileExists(filepath))
-		LoadCodeFromFile(filepath);
+	if (m_currentFile == filepath)
+		return;
 
-	m_textEditor->SetText(m_currentShaderCode);
-	m_savedShaderCode = m_textEditor->GetText();
-	m_currentShaderCode = m_savedShaderCode;
-	m_textFileChanged = false;
+	if (Elysium::FileUtils::FileExists(filepath))
+	{
+		m_currentFile = filepath;
+		if (ShaderPackageSerializer::Deserialize(*m_package, m_currentFile))
+		{
+			for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+				m_loadedImages.ForceAddToSlot(i, m_package->Textures[i]);
+		}
+
+		m_currentFileName = Elysium::FileUtils::GetFileName(m_currentFile);
+
+		m_textEditor->SetText(m_package->Code);
+		m_savedShaderCode = m_textEditor->GetText();
+		m_textFileChanged = false;
+		m_shaderCompileRequested = true;
+	}
 }
 
 void ShaderEditorPanel::SaveAsFile()
@@ -261,72 +374,50 @@ void ShaderEditorPanel::SaveCurrentCode()
 	if (m_currentFile.empty())
 		return;
 
+	m_package->Code = m_textEditor->GetText();
+
+	ShaderPackageSerializer::Serialize(m_currentFile, *m_package);
+
+	m_savedShaderCode = m_package->Code;
+	m_textFileChanged = false;
+
+#if 0
 	std::ofstream outfileStream(m_currentFile);
 	if (outfileStream.is_open())
 	{
-		m_currentShaderCode = m_textEditor->GetText();
+		m_package->Code = m_textEditor->GetText();
 
-		outfileStream << m_currentShaderCode;
+		outfileStream << m_package->Code;
 		outfileStream.close();
 
-		m_savedShaderCode = m_currentShaderCode;
+		m_savedShaderCode = m_package->Code;
 		m_textFileChanged = false;
 	}
 	else
 	{
 		ELYSIUM_WARN("Error saving to file: {0}", m_currentFile);
 	}
+#endif
 }
 
 void ShaderEditorPanel::ResetShader()
 {
-	LoadCodeFromFile();
-	m_textEditor->SetText(m_currentShaderCode);
-	m_currentShaderCode = m_textEditor->GetText();
+	m_package->Code = m_defaultPixelShaderCode;
+
+	m_currentFileName = "Untitled";
+	m_textEditor->SetText(m_package->Code);
+	m_package->Code = m_textEditor->GetText();
 	CompileShader();
 
 	m_textChanged = false;
 	m_textFileChanged = false;
 }
 
-void ShaderEditorPanel::LoadCodeFromFile(const std::string& filepath)
-{
-	if (m_currentFile == filepath)
-		return;
-
-	m_currentFile = filepath;
-	m_currentShaderCode = "";
-
-	if (m_currentFile.empty())
-	{
-		// Use the default
-		m_currentShaderCode.append(m_defaultPixelShaderCode);
-		m_currentFileName = "Untitled";
-	}
-	else
-	{
-		m_currentFileName = Elysium::FileUtils::GetFileName(m_currentFile);
-
-		const std::string solvedCurrentFilepath = Elysium::FileUtils::GetAssetPath_Str(m_currentFile);
-		std::ifstream filepathShaderStream(solvedCurrentFilepath);
-		if (filepathShaderStream.good())
-		{
-			const std::string filepathShaderCode((std::istreambuf_iterator<char>(filepathShaderStream)), std::istreambuf_iterator<char>());
-			m_currentShaderCode.append(filepathShaderCode);
-		}
-		else
-		{
-			// Use the default
-			m_currentShaderCode.append(m_defaultPixelShaderCode);
-		}
-	}
-}
-
 void ShaderEditorPanel::CompileShader()
 {
 	std::stringstream shaderCode;
 	shaderCode << m_baseShaderCode;
-	shaderCode << m_currentShaderCode;
+	shaderCode << m_package->Code;
 
 	// Compile this shader code
 	std::string compileError;
@@ -338,7 +429,53 @@ void ShaderEditorPanel::CompileShader()
 	}
 	else
 	{
-		m_currentShader = newShader;
+		m_package->Shader = newShader;
 		m_shaderCompiled = true;
+
+		// Rebind texture slots
+		int samplers[LoadedImages::MaxNumImages];
+		for (int i = 0; i < LoadedImages::MaxNumImages; ++i)
+			samplers[i] = i;
+
+		m_package->Shader->Bind();
+		m_package->Shader->SetIntArray("textureMaps", samplers, LoadedImages::MaxNumImages);
+		m_package->Shader->Unbind();
+	}
+}
+
+void ShaderEditorPanel::LoadedImages::ForceAddToSlot(uint8_t slot, const std::string& filepath)
+{
+	if (Elysium::FileUtils::FileExists(filepath))
+	{
+		m_filenames[slot] = Elysium::FileUtils::GetFileName(filepath, true);
+		m_textures[slot] = Elysium::Texture2D::Create(filepath);
+	}
+}
+
+bool ShaderEditorPanel::LoadedImages::TryAddToSlot(uint8_t slot)
+{
+	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("PNG Image (*.png)\0*.png\0"
+																	   "JPEG Image (*.jpg, *.jpeg, *.jpe)\0*.jpg;*.jpeg;*.jpe\0");
+	if (Elysium::FileUtils::FileExists(textureFilepath))
+	{
+		m_filenames[slot] = Elysium::FileUtils::GetFileName(textureFilepath, true);
+		m_textures[slot] = Elysium::Texture2D::Create(textureFilepath);
+		return true;
+	}
+	return false;
+}
+
+void ShaderEditorPanel::LoadedImages::RemoveSlot(uint8_t slot)
+{
+	m_textures[slot] = nullptr;
+	m_filenames[slot] = "";
+}
+
+ShaderEditorPanel::LoadedImages::LoadedImages()
+{
+	for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+	{
+		m_textures[i] = nullptr;
+		m_filenames[i] = "";
 	}
 }

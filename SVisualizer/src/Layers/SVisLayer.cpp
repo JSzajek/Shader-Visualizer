@@ -22,8 +22,10 @@ SVisLayer::~SVisLayer()
 
 void SVisLayer::OnAttach()
 {
-	m_editorPanel = Elysium::CreateUnique<ShaderEditorPanel>();
-	m_viewerPanel = Elysium::CreateUnique<ViewerPanel>();
+	m_package = Elysium::CreateUnique<ShaderPackage>();
+
+	m_editorPanel = Elysium::CreateUnique<ShaderEditorPanel>(m_package.get());
+	m_viewerPanel = Elysium::CreateUnique<ViewerPanel>(m_package.get());
 }
 
 void SVisLayer::OnDetach()
