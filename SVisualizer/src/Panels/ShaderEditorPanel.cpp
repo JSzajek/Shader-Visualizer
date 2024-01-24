@@ -6,18 +6,20 @@
 #include "Elysium/Factories/ShaderFactory.h"
 #include "Elysium/Renderer/RendererBase.h"
 
+#include "ShaderPackage.h"
+#include "ShaderPackageSerializer.h"
+
 #include <TextEditor.h>
 #include <imgui_internal.h>
 
-ShaderEditorPanel::ShaderEditorPanel()
-	: m_currentShader(nullptr),
-	m_currentShaderCode(),
+ShaderEditorPanel::ShaderEditorPanel(ShaderPackage* package)
+	: m_package(package),
 	m_savedShaderCode(),
 	m_shaderCompileRequested(false),
 	m_shaderCompiled(false),
 	m_textChanged(false),
 	m_textFileChanged(false),
-	m_currentFile("null"), 
+	m_currentFile(), 
 	m_currentFileName(),
 	m_imageEditorVisible(false)
 {
@@ -55,7 +57,7 @@ ShaderEditorPanel::~ShaderEditorPanel()
 void ShaderEditorPanel::OnUpdate()
 {
 	std::string currentText = m_textEditor->GetText();
-	if (currentText != m_currentShaderCode)
+	if (currentText != m_package->Code)
 		m_textChanged = true;
 
 	if (currentText != m_savedShaderCode)
@@ -240,10 +242,16 @@ void ShaderEditorPanel::OnImGuiRender()
 			ImGui::NextColumn();
 			ImGui::NextColumn();
 			if (ImGui::Button(ICON_FA_PLUS, ImVec2(40, 25)))
-				m_loadedImages.TryAddToSlot(i);
+			{
+				if (m_loadedImages.TryAddToSlot(i))
+					m_package->Textures[i] = m_loadedImages.m_textures[i]->GetName();
+			}
 			ImGui::SameLine();
 			if (ImGui::Button(ICON_FA_TRASH, ImVec2(40, 25)))
+			{
 				m_loadedImages.RemoveSlot(i);
+				m_package->Textures[i] = "";
+			}
 
 			ImGui::NextColumn();
 		}	
@@ -262,7 +270,7 @@ void ShaderEditorPanel::OnImGuiRender()
 void ShaderEditorPanel::GetCurrentShader(Elysium::Shared<Elysium::Shader>& output)
 {
 	// Bind the loaded images to the correct slots
-	m_currentShader->Bind();
+	m_package->Shader->Bind();
 	for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
 	{
 		Elysium::Shared<Elysium::Texture2D> tex = m_loadedImages.m_textures[i];
@@ -271,9 +279,9 @@ void ShaderEditorPanel::GetCurrentShader(Elysium::Shared<Elysium::Shader>& outpu
 		else
 			Elysium::GlobalRendererBase::GetDefaultTexture()->Bind(i);
 	}
-	m_currentShader->Unbind();
+	m_package->Shader->Unbind();
 
-	output = m_currentShader;
+	output = m_package->Shader;
 }
 
 void ShaderEditorPanel::NewFile()
@@ -290,7 +298,8 @@ void ShaderEditorPanel::NewFile()
 	m_currentFile = "";
 	m_currentFileName = "Untitled";
 
-	m_currentShaderCode = m_defaultPixelShaderCode;
+	m_package->Reset();
+
 	m_textFileChanged = true;
 
 	ResetShader();
@@ -312,7 +321,7 @@ void ShaderEditorPanel::SaveFile()
 
 void ShaderEditorPanel::Compile()
 {
-	m_currentShaderCode = m_textEditor->GetText();
+	m_package->Code = m_textEditor->GetText();
 	m_shaderCompileRequested = true;
 }
 
@@ -320,13 +329,25 @@ void ShaderEditorPanel::LoadFromFile()
 {
 	const std::string filepath = Elysium::FileDialogs::OpenFile("Pixel Shader (*.pshader)\0*.pshader\0");
 
-	if (Elysium::FileUtils::FileExists(filepath))
-		LoadCodeFromFile(filepath);
+	if (m_currentFile == filepath)
+		return;
 
-	m_textEditor->SetText(m_currentShaderCode);
-	m_savedShaderCode = m_textEditor->GetText();
-	m_currentShaderCode = m_savedShaderCode;
-	m_textFileChanged = false;
+	if (Elysium::FileUtils::FileExists(filepath))
+	{
+		m_currentFile = filepath;
+		if (ShaderPackageSerializer::Deserialize(*m_package, m_currentFile))
+		{
+			for (uint8_t i = 0; i < LoadedImages::MaxNumImages; ++i)
+				m_loadedImages.ForceAddToSlot(i, m_package->Textures[i]);
+		}
+
+		m_currentFileName = Elysium::FileUtils::GetFileName(m_currentFile);
+
+		m_textEditor->SetText(m_package->Code);
+		m_savedShaderCode = m_textEditor->GetText();
+		m_textFileChanged = false;
+		m_shaderCompileRequested = true;
+	}
 }
 
 void ShaderEditorPanel::SaveAsFile()
@@ -346,72 +367,50 @@ void ShaderEditorPanel::SaveCurrentCode()
 	if (m_currentFile.empty())
 		return;
 
+	m_package->Code = m_textEditor->GetText();
+
+	ShaderPackageSerializer::Serialize(m_currentFile, *m_package);
+
+	m_savedShaderCode = m_package->Code;
+	m_textFileChanged = false;
+
+#if 0
 	std::ofstream outfileStream(m_currentFile);
 	if (outfileStream.is_open())
 	{
-		m_currentShaderCode = m_textEditor->GetText();
+		m_package->Code = m_textEditor->GetText();
 
-		outfileStream << m_currentShaderCode;
+		outfileStream << m_package->Code;
 		outfileStream.close();
 
-		m_savedShaderCode = m_currentShaderCode;
+		m_savedShaderCode = m_package->Code;
 		m_textFileChanged = false;
 	}
 	else
 	{
 		ELYSIUM_WARN("Error saving to file: {0}", m_currentFile);
 	}
+#endif
 }
 
 void ShaderEditorPanel::ResetShader()
 {
-	LoadCodeFromFile();
-	m_textEditor->SetText(m_currentShaderCode);
-	m_currentShaderCode = m_textEditor->GetText();
+	m_package->Code = m_defaultPixelShaderCode;
+
+	m_currentFileName = "Untitled";
+	m_textEditor->SetText(m_package->Code);
+	m_package->Code = m_textEditor->GetText();
 	CompileShader();
 
 	m_textChanged = false;
 	m_textFileChanged = false;
 }
 
-void ShaderEditorPanel::LoadCodeFromFile(const std::string& filepath)
-{
-	if (m_currentFile == filepath)
-		return;
-
-	m_currentFile = filepath;
-	m_currentShaderCode = "";
-
-	if (m_currentFile.empty())
-	{
-		// Use the default
-		m_currentShaderCode.append(m_defaultPixelShaderCode);
-		m_currentFileName = "Untitled";
-	}
-	else
-	{
-		m_currentFileName = Elysium::FileUtils::GetFileName(m_currentFile);
-
-		const std::string solvedCurrentFilepath = Elysium::FileUtils::GetAssetPath_Str(m_currentFile);
-		std::ifstream filepathShaderStream(solvedCurrentFilepath);
-		if (filepathShaderStream.good())
-		{
-			const std::string filepathShaderCode((std::istreambuf_iterator<char>(filepathShaderStream)), std::istreambuf_iterator<char>());
-			m_currentShaderCode.append(filepathShaderCode);
-		}
-		else
-		{
-			// Use the default
-			m_currentShaderCode.append(m_defaultPixelShaderCode);
-		}
-	}
-}
-
 void ShaderEditorPanel::CompileShader()
 {
 	std::stringstream shaderCode;
 	shaderCode << m_baseShaderCode;
-	shaderCode << m_currentShaderCode;
+	shaderCode << m_package->Code;
 
 	// Compile this shader code
 	std::string compileError;
@@ -423,7 +422,7 @@ void ShaderEditorPanel::CompileShader()
 	}
 	else
 	{
-		m_currentShader = newShader;
+		m_package->Shader = newShader;
 		m_shaderCompiled = true;
 
 		// Rebind texture slots
@@ -431,20 +430,32 @@ void ShaderEditorPanel::CompileShader()
 		for (int i = 0; i < LoadedImages::MaxNumImages; ++i)
 			samplers[i] = i;
 
-		m_currentShader->Bind();
-		m_currentShader->SetIntArray("textureMaps", samplers, LoadedImages::MaxNumImages);
-		m_currentShader->Unbind();
+		m_package->Shader->Bind();
+		m_package->Shader->SetIntArray("textureMaps", samplers, LoadedImages::MaxNumImages);
+		m_package->Shader->Unbind();
 	}
 }
 
-void ShaderEditorPanel::LoadedImages::TryAddToSlot(uint8_t slot)
+void ShaderEditorPanel::LoadedImages::ForceAddToSlot(uint8_t slot, const std::string& filepath)
 {
-	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("");
+	if (Elysium::FileUtils::FileExists(filepath))
+	{
+		m_filenames[slot] = Elysium::FileUtils::GetFileName(filepath, true);
+		m_textures[slot] = Elysium::Texture2D::Create(filepath);
+	}
+}
+
+bool ShaderEditorPanel::LoadedImages::TryAddToSlot(uint8_t slot)
+{
+	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("PNG Image (*.png)\0*.png\0"
+																	   "JPEG Image (*.jpg, *.jpeg, *.jpe)\0*.jpg;*.jpeg;*.jpe\0");
 	if (Elysium::FileUtils::FileExists(textureFilepath))
 	{
 		m_filenames[slot] = Elysium::FileUtils::GetFileName(textureFilepath, true);
 		m_textures[slot] = Elysium::Texture2D::Create(textureFilepath);
+		return true;
 	}
+	return false;
 }
 
 void ShaderEditorPanel::LoadedImages::RemoveSlot(uint8_t slot)

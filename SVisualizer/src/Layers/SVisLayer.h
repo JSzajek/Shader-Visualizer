@@ -3,6 +3,8 @@
 #include "Elysium.h"
 #include "Elysium/Scene/Entity.h"
 
+#include "ShaderPackage.h"
+
 class ViewerPanel;
 class ShaderEditorPanel;
 
@@ -31,6 +33,8 @@ private:
 private:
 	Elysium::Unique<ViewerPanel> m_viewerPanel;
 	Elysium::Unique<ShaderEditorPanel> m_editorPanel;
+
+	Elysium::Unique<ShaderPackage> m_package;
 
 	Elysium::Shared<Elysium::Shader> m_defaultShader;
 

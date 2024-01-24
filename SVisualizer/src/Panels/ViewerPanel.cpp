@@ -4,14 +4,16 @@
 #include "Elysium.h"
 #include "Elysium/Factories/ShaderFactory.h"
 
+#include "ShaderPackage.h"
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <opencv2/opencv.hpp>
 
-ViewerPanel::ViewerPanel()
-	: m_size(1, 1), 
-	m_desiredSize(800, 600),
+ViewerPanel::ViewerPanel(ShaderPackage* package)
+	: m_package(package), 
+	m_size(1, 1),
 	m_outputSize(1, 1),
 	m_outputSizeChanged(false),
 	m_orthoSize(500.f),
@@ -19,17 +21,16 @@ ViewerPanel::ViewerPanel()
 	m_focused(false),
 	m_hovered(false),
 	m_currentTime(0),
-	m_useBloom(false),
-	m_gamma(1.1f),
-	m_exposure(1.0f),
+	m_prevGamma(0),
+	m_prevExposure(0),
 	m_playing(true),
 	m_settingsVisible(false),
 	m_debugPass(DrawPass::None)
 {
 	Elysium::FrameBufferSpecification bufferspecs;
 	bufferspecs.Attachments = { Elysium::FrameBufferTextureFormat::RGBA8 };
-	bufferspecs.Width = m_size.x;
-	bufferspecs.Height = m_size.y;
+	bufferspecs.Width = m_package->Dimensions.x;
+	bufferspecs.Height = m_package->Dimensions.y;
 	bufferspecs.SwapChainTarget = false;
 
 	m_fbo = Elysium::FrameBuffer::Create(bufferspecs);
@@ -40,8 +41,8 @@ ViewerPanel::ViewerPanel()
 		Elysium::FrameBufferTextureFormat::RGBA16F,
 		Elysium::FrameBufferTextureFormat::RGBA16F 
 	};
-	hdrbufferspecs.Width = m_size.x;
-	hdrbufferspecs.Height = m_size.y;
+	hdrbufferspecs.Width = m_package->Dimensions.x;
+	hdrbufferspecs.Height = m_package->Dimensions.y;
 	hdrbufferspecs.SwapChainTarget = false;
 	m_hdrfbo = Elysium::FrameBuffer::Create(hdrbufferspecs);
 
@@ -86,20 +87,28 @@ ViewerPanel::ViewerPanel()
 
 void ViewerPanel::OnUpdate()
 {
-	if (m_desiredSize != m_size)
+	if (m_prevGamma != m_package->Gamma || m_prevExposure != m_package->Exposure)
 	{
-		m_size = m_desiredSize;
-		const uint32_t clampSizeX = std::max(1, m_size.x);
-		const uint32_t clampSizeY = std::max(1, m_size.y);
+		Elysium::PostProcessData& postProcessRef = Elysium::CoreUniformBuffers::GetPostProcessDataRef();
+		m_prevGamma = postProcessRef.m_gammaAdjustment[0] = m_package->Gamma;
+		m_prevExposure = postProcessRef.m_exposure = m_package->Exposure;
+	}
 
-		m_shaderfbo->Resize(clampSizeX, clampSizeY);
-		m_hdrfbo->Resize(clampSizeX, clampSizeY);
-		m_bloomFbos[0]->Resize(clampSizeX, clampSizeY);
-		m_bloomFbos[1]->Resize(clampSizeX, clampSizeY);
+	if (m_size != m_package->Dimensions)
+	{
+		m_size = m_package->Dimensions;
+
+		const uint32_t sizeX = m_size.x;
+		const uint32_t sizeY = m_size.y;
+
+		m_shaderfbo->Resize(sizeX, sizeY);
+		m_hdrfbo->Resize(sizeX, sizeY);
+		m_bloomFbos[0]->Resize(sizeX, sizeY);
+		m_bloomFbos[1]->Resize(sizeX, sizeY);
 
 		auto& rectComp = m_sprite.GetComponent<Elysium::RectTransformComponent>();
-		const Elysium::Math::Vec2 dim((float)m_size.x, (float)m_size.y);
-		const Elysium::Math::Vec2 offset(m_size.x * 0.5f, m_size.y * 0.5f);
+		const Elysium::Math::Vec2 dim((float)sizeX, (float)sizeY);
+		const Elysium::Math::Vec2 offset(sizeX * 0.5f, sizeY * 0.5f);
 		rectComp.SetTranslation(-offset);
 		rectComp.SetDimensions(dim);
 
@@ -130,7 +139,7 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 {
 	if (shader)
 	{
-		if (m_useBloom)
+		if (m_package->BloomEnabled)
 		{
 			Elysium::GraphicsCalls::ClearBuffers();
 			Elysium::RenderCommands::DrawScreenShader(m_hdrfbo, shader);
@@ -153,10 +162,6 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 			if (m_debugPass == DrawPass::None)
 			{
 				// Combination Pass - tonemap hdr color and blend to shader output.
-				m_bloomShader->Bind();
-				m_bloomShader->SetFloat("inputGamma", m_gamma);
-				m_bloomShader->SetFloat("inputExposure", m_exposure);
-
 				Elysium::GraphicsCalls::ClearBuffers();
 				Elysium::RenderCommands::DrawTextures(m_shaderfbo, m_bloomShader,
 													  { m_hdrfbo->GetColorAttachment(), m_bloomFbos[(int)!horizontal]->GetColorAttachment()});
@@ -168,10 +173,6 @@ void ViewerPanel::DrawTo(const Elysium::Shared<Elysium::Shader>& shader)
 					debugTexToDraw = m_hdrfbo->GetColorAttachment(1);
 				else if (m_debugPass == DrawPass::BlurPass)
 					debugTexToDraw = m_bloomFbos[(int)!horizontal]->GetColorAttachment();
-
-				m_debugShader->Bind();
-				m_debugShader->SetFloat("inputGamma", m_gamma);
-				m_debugShader->SetFloat("inputExposure", m_exposure);
 
 				Elysium::GraphicsCalls::ClearBuffers();
 				Elysium::RenderCommands::DrawTexture(m_shaderfbo, Elysium::RenderCommands::TextureDrawType::Color, 
@@ -314,28 +315,28 @@ void ViewerPanel::OnImGuiRender()
 		ImGui::Text("Width:");
 		ImGui::SameLine();
 		ImGui::PushItemWidth(50.f);
-		ImGui::InputScalar("##desired_width", ImGuiDataType_U32, &m_desiredSize.x);
-		m_desiredSize.x = std::min(std::max(m_desiredSize.x, 1), 4096);
+		ImGui::InputScalar("##cur_width", ImGuiDataType_U32, &m_package->Dimensions.x);
+		m_package->Dimensions.x = std::min(std::max(m_package->Dimensions.x, 1), 4096);
 		ImGui::PopItemWidth();
 		ImGui::SameLine();
 
 		ImGui::Text("Height:");
 		ImGui::SameLine();
 		ImGui::PushItemWidth(50.f);
-		ImGui::InputScalar("##desired_height", ImGuiDataType_U32, &m_desiredSize.y);
-		m_desiredSize.y = std::min(std::max(m_desiredSize.y, 1), 4096);
+		ImGui::InputScalar("##cur_height", ImGuiDataType_U32, &m_package->Dimensions.y);
+		m_package->Dimensions.y = std::min(std::max(m_package->Dimensions.y, 1), 4096);
 		ImGui::PopItemWidth();
 
 		ImGui::Text("Bloom:");
 		ImGui::SameLine();
-		ImGui::Checkbox("##bloom", &m_useBloom);
+		ImGui::Checkbox("##bloom", &m_package->BloomEnabled);
 
-		if (m_useBloom)
+		if (m_package->BloomEnabled)
 		{
 			ImGui::Text("Gamma:");
 			ImGui::SameLine();
 			ImGui::PushItemWidth(75.f);
-			ImGui::DragFloat("##gammavalue", &m_gamma, 0.1f);
+			ImGui::DragFloat("##gammavalue", &m_package->Gamma, 0.1f);
 			ImGui::PopItemWidth();
 			ImGui::SameLine();
 			ImGui::Spacing();
@@ -343,7 +344,7 @@ void ViewerPanel::OnImGuiRender()
 			ImGui::Text("Exposure:");
 			ImGui::SameLine();
 			ImGui::PushItemWidth(75.f);
-			ImGui::DragFloat("##exposurevalue", &m_exposure, 0.1f);
+			ImGui::DragFloat("##exposurevalue", &m_package->Exposure, 0.1f);
 			ImGui::PopItemWidth();
 		}
 
@@ -417,7 +418,7 @@ void ViewerPanel::UpdateCameraProjection()
 	m_camera->SetProperties(aspectRatio, m_orthoSize);
 
 	Elysium::CameraData& cameraRef = Elysium::CoreUniformBuffers::GetCameraDataRef();
-	cameraRef.m_viewport = Elysium::Math::Vec4((float)m_size.x, (float)m_size.y, 0, 0);
+	cameraRef.m_viewport = Elysium::Math::Vec4((float)m_package->Dimensions.x, (float)m_package->Dimensions.y, 0, 0);
 	cameraRef.m_orthoProjectionMatrix = m_camera->GetProjection();
 }
 
@@ -431,7 +432,7 @@ void ViewerPanel::UpdateCameraView()
 
 void ViewerPanel::FocusCamera()
 {
-	m_orthoSize = static_cast<float>(std::max(m_size.x, m_size.y));
+	m_orthoSize = static_cast<float>(std::max(m_package->Dimensions.x, m_package->Dimensions.y));
 }
 
 void ViewerPanel::SnapShot()

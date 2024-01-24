@@ -4,10 +4,12 @@
 
 #include "Elysium/Scene/2DComponents.h"
 
+struct ShaderPackage;
+
 class ViewerPanel
 {
 public:
-	ViewerPanel();
+	ViewerPanel(ShaderPackage* package);
 public:
 	void OnUpdate();
 	void DrawTo(const Elysium::Shared<Elysium::Shader>& shader);
@@ -26,8 +28,9 @@ private:
 
 	void SnapShot();
 private:
+	ShaderPackage* m_package;
+
 	Elysium::Math::iVec2 m_size;
-	Elysium::Math::iVec2 m_desiredSize;
 	Elysium::Math::iVec2 m_outputSize;
 	bool m_outputSizeChanged;
 
@@ -52,9 +55,8 @@ private:
 	bool m_hovered;
 
 	float m_currentTime;
-	bool m_useBloom;
-	float m_gamma;
-	float m_exposure;
+	float m_prevGamma;
+	float m_prevExposure;
 
 	bool m_playing;
 	bool m_settingsVisible;

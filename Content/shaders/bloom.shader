@@ -23,9 +23,6 @@ layout(location = 0) out vec4 Color;
 layout(binding = 0) uniform sampler2D albedoTexture;
 layout(binding = 1) uniform sampler2D bloomTexture;
 
-uniform float inputGamma;
-uniform float inputExposure;
-
 void main()
 {
 	vec3 hdrColor = texture(albedoTexture, TexCoords).rgb;
@@ -34,10 +31,10 @@ void main()
 	hdrColor += bloomColor; // additive blending
 	
 	// tone mapping
-	vec3 result = vec3(1.0) - exp(-hdrColor * inputExposure);
+	vec3 result = vec3(1.0) - exp(-hdrColor * u_Exposure);
 	
 	// also gamma correct while we're at it       
-	result = pow(result, vec3(1.0 / inputGamma));
+	result = pow(result, vec3(1.0 / u_GammaAdjustment.x));
 	
 	Color = vec4(result, 1.0);
 }
