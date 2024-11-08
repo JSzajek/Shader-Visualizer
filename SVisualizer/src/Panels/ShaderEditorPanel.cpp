@@ -454,7 +454,8 @@ void ShaderEditorPanel::LoadedImages::ForceAddToSlot(uint8_t slot, const std::st
 
 bool ShaderEditorPanel::LoadedImages::TryAddToSlot(uint8_t slot)
 {
-	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("PNG Image (*.png)\0*.png\0"
+	const std::string textureFilepath = Elysium::FileDialogs::OpenFile("All Supported Formats (*.png, *.jpg, *.jpeg)\0*.png;*.jpg;*.jpeg\0"
+																	   "PNG Image (*.png)\0*.png\0"
 																	   "JPEG Image (*.jpg, *.jpeg, *.jpe)\0*.jpg;*.jpeg;*.jpe\0");
 	if (Elysium::FileUtils::FileExists(textureFilepath))
 	{

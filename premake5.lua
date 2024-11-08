@@ -1,4 +1,5 @@
 require("vstudio")
+include "Elysium/elysiumlink.lua"
 
 local vs = premake.vstudio.vc2010
 
@@ -35,19 +36,7 @@ workspace "SVisualizer"
 
 outputdir = "%{cfg.system}-%{cfg.buildcfg}-%{cfg.architecture}"
 
-group "Dependencies"
-	include "vendor/premake"
-	include "Elysium/vendor/glfw"
-	include "Elysium/vendor/yaml-cpp"
-	include "Elysium/vendor/imgui_suite/imgui"
-	include "Elysium/vendor/imgui_suite/imguizmo"
-	include "Elysium/vendor/imgui_suite/imnodes"
-	include "Elysium/vendor/imgui_suite/imtexteditor"
-group ""
-
-group "Engine"
-	include "Elysium"
-group ""
+ElysiumProjDep()
 
 group ""
 	include "SVisualizer"
